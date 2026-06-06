@@ -1,6 +1,6 @@
 const { ChannelType, PermissionsBitField } = require('discord.js');
 const { makeEmbed } = require('../utils/embed');
-const { addMessageXp, progressBar } = require('../utils/levelSystem');
+const { addMessageXp, progressBar, getMilestoneRoleDefinition, getMilestoneRoleNames } = require('../utils/levelSystem');
 const spamState = {};
 const recentMessageIds = new Set();
 
@@ -56,6 +56,31 @@ module.exports = {
     try {
       const levelInfo = addMessageXp(message.guild.id, message.author.id, message.content);
       if (levelInfo?.leveledUp) {
+        let roleField = null;
+        const milestone = getMilestoneRoleDefinition(levelInfo.level);
+        if (milestone) {
+          let role = message.guild.roles.cache.find(r => r.name === milestone.name);
+          if (!role && message.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+            try {
+              role = await message.guild.roles.create({ name: milestone.name, color: milestone.color, reason: 'Seviye rolü oluşturuldu' });
+            } catch (roleError) {
+              console.warn(`Seviye rolü oluşturulamadı: ${milestone.name}`, roleError);
+            }
+          }
+
+          if (role) {
+            const milestoneNames = getMilestoneRoleNames();
+            const rolesToRemove = message.member.roles.cache.filter(r => milestoneNames.includes(r.name) && r.id !== role.id);
+            if (rolesToRemove.size > 0) {
+              await message.member.roles.remove(rolesToRemove, 'Seviye rolünü güncelleme').catch(() => {});
+            }
+            if (!message.member.roles.cache.has(role.id)) {
+              await message.member.roles.add(role, 'Seviye milestone rolu verildi').catch(() => {});
+            }
+            roleField = { name: 'Yeni Rol', value: role.name, inline: true };
+          }
+        }
+
         const levelEmbed = makeEmbed({
           title: 'Seviye Atladın!',
           description: `Tebrikler ${message.author}! Şu an **Seviye ${levelInfo.level}** oldun.`,
@@ -65,7 +90,8 @@ module.exports = {
             { name: 'Kazandığın XP', value: `${levelInfo.earned}`, inline: true },
             { name: 'Bir sonraki seviyeye XP', value: `${levelInfo.remainingXp}`, inline: true },
             { name: 'Toplam Mesaj', value: `${levelInfo.messages}`, inline: true },
-            { name: 'İlerleme', value: progressBar(levelInfo.currentXp, levelInfo.nextThreshold), inline: false }
+            { name: 'İlerleme', value: progressBar(levelInfo.currentXp, levelInfo.nextThreshold), inline: false },
+            ...(roleField ? [roleField] : [])
           ],
           footer: { text: 'Her mesajın seni daha da güçlendirir.' },
           timestamp: true

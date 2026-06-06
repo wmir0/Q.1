@@ -60,6 +60,24 @@ function progressBar(current, total, size = 16) {
   return `${'█'.repeat(filled)}${'░'.repeat(empty)} ${Math.round(progress * 100)}%`;
 }
 
+const LEVEL_ROLE_DEFINITIONS = {
+  20: { name: 'Seviye 20', color: 0x1ABC9C },
+  40: { name: 'Seviye 40', color: 0x2ECC71 },
+  60: { name: 'Seviye 60', color: 0x3498DB },
+  90: { name: 'Seviye 90', color: 0x9B59B6 },
+  120: { name: 'Seviye 120', color: 0xE67E22 },
+  160: { name: 'Seviye 160', color: 0xE74C3C },
+  200: { name: 'Seviye 200', color: 0xF1C40F }
+};
+
+function getMilestoneRoleDefinition(level) {
+  return LEVEL_ROLE_DEFINITIONS[level] || null;
+}
+
+function getMilestoneRoleNames() {
+  return Object.values(LEVEL_ROLE_DEFINITIONS).map(def => def.name);
+}
+
 function addMessageXp(guildId, userId, messageContent) {
   const trimmed = messageContent?.trim();
   if (!trimmed || trimmed.length < 5) return null;
@@ -82,4 +100,4 @@ function addMessageXp(guildId, userId, messageContent) {
   };
 }
 
-module.exports = { addMessageXp, getLevelData, progressBar, xpForLevel };
+module.exports = { addMessageXp, getLevelData, progressBar, xpForLevel, getMilestoneRoleDefinition, getMilestoneRoleNames };
