@@ -1,5 +1,6 @@
 const { ChannelType, PermissionsBitField } = require('discord.js');
 const { makeEmbed } = require('../utils/embed');
+const { addMessageXp, progressBar } = require('../utils/levelSystem');
 const spamState = {};
 const recentMessageIds = new Set();
 
@@ -50,6 +51,29 @@ module.exports = {
       }
     } catch (err) {
       console.error('Spam watch error:', err);
+    }
+
+    try {
+      const levelInfo = addMessageXp(message.guild.id, message.author.id, message.content);
+      if (levelInfo?.leveledUp) {
+        const levelEmbed = makeEmbed({
+          title: 'Seviye Atladın!',
+          description: `Tebrikler ${message.author}! Şu an **Seviye ${levelInfo.level}** oldun.`,
+          color: 0x9B59B6,
+          thumbnail: message.author.displayAvatarURL({ dynamic: true, size: 512 }),
+          fields: [
+            { name: 'Kazandığın XP', value: `${levelInfo.earned}`, inline: true },
+            { name: 'Bir sonraki seviyeye XP', value: `${levelInfo.remainingXp}`, inline: true },
+            { name: 'Toplam Mesaj', value: `${levelInfo.messages}`, inline: true },
+            { name: 'İlerleme', value: progressBar(levelInfo.currentXp, levelInfo.nextThreshold), inline: false }
+          ],
+          footer: { text: 'Her mesajın seni daha da güçlendirir.' },
+          timestamp: true
+        });
+        await message.channel.send({ embeds: [levelEmbed] });
+      }
+    } catch (err) {
+      console.error('Level sistemi hatası:', err);
     }
 
     if (message.content === '!ping') {

@@ -1,10 +1,12 @@
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 
-function makeEmbed({ title, description, fields, color = 0x00AE86, footer, timestamp = true }) {
+function makeEmbed({ title, description, fields, color = 0x00AE86, footer, timestamp = true, thumbnail, image }) {
   const embed = new EmbedBuilder().setColor(color);
   if (title) embed.setTitle(title);
   if (description) embed.setDescription(description);
   if (fields) embed.addFields(fields);
+  if (thumbnail) embed.setThumbnail(thumbnail);
+  if (image) embed.setImage(image);
   if (footer) {
     if (typeof footer === 'string') {
       embed.setFooter({ text: footer });
