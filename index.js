@@ -1,7 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { Client, GatewayIntentBits, PermissionsBitField, MessageFlags, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionsBitField, MessageFlags, ChannelType, REST, Routes, EmbedBuilder } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
 
 const client = new Client({
@@ -15,36 +15,36 @@ const client = new Client({
 });
 
 const recentMessageIds = new Set();
-const recentVoiceCommands = new Set();
-const processingVoiceCommands = new Set();
 const DM_ANNOUNCEMENT_DELAY_MS = 5000;
 
 const token = process.env.DISCORD_TOKEN || process.env.BOT_TOKEN;
 const tokenSource = process.env.DISCORD_TOKEN ? 'DISCORD_TOKEN' : process.env.BOT_TOKEN ? 'BOT_TOKEN' : null;
+const guildId = process.env.GUILD_ID || process.env.DISCORD_GUILD || process.env.SERVER_ID || null;
 if (!token) {
   console.error('HATA: DISCORD_TOKEN veya BOT_TOKEN ortam değişkeni ayarlı değil.');
   process.exit(1);
 }
 
 console.log(`Token kaynağı: ${tokenSource}`);
+if (guildId) console.log(`Guild komut kaydı için GUILD_ID: ${guildId}`);
 
 const slashCommands = [
   {
     name: 'dmduyuru',
     description: 'Tüm sunucu üyelerine DM olarak duyuru gönderir',
-    defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.Administrator.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'baslik',
-        type: 3,
         description: 'Duyurunun başlığı',
+        type: 3,
         required: true
       },
       {
         name: 'mesaj',
-        type: 3,
         description: 'Gönderilecek duyuru metni',
+        type: 3,
         required: true
       }
     ]
@@ -52,19 +52,19 @@ const slashCommands = [
   {
     name: 'dm',
     description: 'Belirtilen kullanıcıya bot aracılığıyla DM gönderir',
-    defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
-    dmPermission: true,
+    default_member_permissions: PermissionsBitField.Flags.Administrator.toString(),
+    dm_permission: true,
     options: [
       {
         name: 'hedef',
-        type: 6,
         description: 'Mesaj gönderilecek kullanıcı',
+        type: 6,
         required: true
       },
       {
         name: 'mesaj',
-        type: 3,
         description: 'Gönderilecek mesaj',
+        type: 3,
         required: true
       }
     ]
@@ -72,24 +72,24 @@ const slashCommands = [
   {
     name: 'ping',
     description: 'Botun gecikmesini gösterir',
-    dmPermission: false
+    dm_permission: false
   },
   {
     name: 'ban',
     description: 'Belirtilen kullanıcıyı sunucudan yasakla',
-    defaultMemberPermissions: PermissionsBitField.Flags.BanMembers,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.BanMembers.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'hedef',
-        type: 6,
         description: 'Yasaklanacak kullanıcı',
+        type: 6,
         required: true
       },
       {
         name: 'sebep',
-        type: 3,
         description: 'Yasağın sebebi',
+        type: 3,
         required: false
       }
     ]
@@ -97,19 +97,19 @@ const slashCommands = [
   {
     name: 'kick',
     description: 'Belirtilen kullanıcıyı sunucudan at',
-    defaultMemberPermissions: PermissionsBitField.Flags.KickMembers,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.KickMembers.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'hedef',
-        type: 6,
         description: 'Atılacak kullanıcı',
+        type: 6,
         required: true
       },
       {
         name: 'sebep',
-        type: 3,
         description: 'Atılma sebebi',
+        type: 3,
         required: false
       }
     ]
@@ -117,25 +117,25 @@ const slashCommands = [
   {
     name: 'mute',
     description: 'Kullanıcıyı timeout ile sustur (dakika olarak süre)',
-    defaultMemberPermissions: PermissionsBitField.Flags.ModerateMembers,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.ModerateMembers.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'hedef',
-        type: 6,
         description: 'Susturulacak kullanıcı',
+        type: 6,
         required: true
       },
       {
         name: 'süre',
-        type: 4,
         description: 'Süre (dakika). Boş bırakılırsa 10 dakika uygulanır.',
+        type: 4,
         required: false
       },
       {
         name: 'sebep',
-        type: 3,
         description: 'Susturma sebebi',
+        type: 3,
         required: false
       }
     ]
@@ -143,13 +143,13 @@ const slashCommands = [
   {
     name: 'sil',
     description: 'Kanaldan son mesajları siler',
-    defaultMemberPermissions: PermissionsBitField.Flags.ManageMessages,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.ManageMessages.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'sayi',
-        type: 4,
         description: 'Silinecek mesaj sayısı (1-200)',
+        type: 4,
         required: true
       }
     ]
@@ -157,13 +157,13 @@ const slashCommands = [
   {
     name: 'setjoinlog',
     description: 'Giriş log kanalı ayarla',
-    defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.Administrator.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'kanal',
-        type: 7,
         description: 'Giriş loglarının gönderileceği kanal',
+        type: 7,
         required: true
       }
     ]
@@ -171,34 +171,47 @@ const slashCommands = [
   {
     name: 'setleavelog',
     description: 'Çıkış log kanalı ayarla',
-    defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.Administrator.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'kanal',
-        type: 7,
         description: 'Çıkış loglarının gönderileceği kanal',
+        type: 7,
         required: true
       }
     ]
-  }
-  ,
+  },
   {
     name: 'setspamwatch',
     description: 'Spam watch: izle ve ilet; watch=izlenen kanal, target=iletilecek kanal (opsiyonel)',
-    defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
-    dmPermission: false,
+    default_member_permissions: PermissionsBitField.Flags.Administrator.toString(),
+    dm_permission: false,
     options: [
       {
         name: 'watch',
-        type: 7,
         description: 'İzlenecek kanal (mesajlar burada sayılır)',
+        type: 7,
         required: true
       },
       {
         name: 'target',
-        type: 7,
         description: 'İletilecek kanal (boşsa izlenen kanala iletilir)',
+        type: 7,
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'voice',
+    description: 'Botu belirtilen ses kanalına veya sizin bulunduğunuz ses kanalına bağlar',
+    default_member_permissions: PermissionsBitField.Flags.Administrator.toString(),
+    dm_permission: false,
+    options: [
+      {
+        name: 'kanal',
+        description: 'Botun gireceği ses kanalı',
+        type: 7,
         required: false
       }
     ]
@@ -225,6 +238,26 @@ function saveGuildSettings() {
   }
 }
 
+function makeEmbed({ title, description, fields, color = 0x00AE86, footer, timestamp = true }) {
+  const embed = new EmbedBuilder().setColor(color);
+  if (title) embed.setTitle(title);
+  if (description) embed.setDescription(description);
+  if (fields) embed.addFields(fields);
+  if (footer) embed.setFooter({ text: footer });
+  if (timestamp) embed.setTimestamp();
+  return embed;
+}
+
+async function replyEmbed(interaction, options) {
+  const embed = makeEmbed(options);
+  const payload = { embeds: [embed] };
+  if (options.ephemeral) payload.flags = MessageFlags.Ephemeral;
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(payload);
+  }
+  return interaction.reply(payload);
+}
+
 // Runtime spam watch state: per guild -> per channel
 const spamState = {};
 
@@ -232,10 +265,20 @@ client.once('ready', async () => {
   console.log(`${client.user.tag} aktif!`);
 
   try {
-    await client.guilds.fetch();
-    for (const guild of client.guilds.cache.values()) {
-      await guild.commands.set(slashCommands.filter(Boolean));
-      console.log(`Slash komutlar ${guild.name} sunucusuna kaydedildi.`);
+    const rest = new REST({ version: '10' }).setToken(token);
+    if (guildId) {
+      await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: slashCommands });
+      console.log(`Slash komutlar guild ${guildId} için yüklendi.`);
+    } else if (client.guilds.cache.size > 0) {
+      const registerGuilds = client.guilds.cache.map(guild => {
+        return rest.put(Routes.applicationGuildCommands(client.user.id, guild.id), { body: slashCommands })
+          .then(() => console.log(`Slash komutlar guild ${guild.id} için yüklendi.`))
+          .catch(err => console.error(`Guild ${guild.id} komut kaydı hatası:`, err));
+      });
+      await Promise.allSettled(registerGuilds);
+    } else {
+      await rest.put(Routes.applicationCommands(client.user.id), { body: slashCommands });
+      console.log('Slash komutlar global olarak yüklendi.');
     }
   } catch (error) {
     console.error('Slash komut kaydı sırasında hata:', error);
@@ -259,11 +302,20 @@ client.on('interactionCreate', async interaction => {
     try {
       const latency = Math.abs(Date.now() - interaction.createdTimestamp);
       const ws = Math.round(interaction.client.ws.ping || 0);
-      return interaction.reply({ content: `Şu anki gecikme: ${latency}ms (WS: ${ws}ms)` });
+      const embed = new EmbedBuilder()
+        .setTitle('Ping Ölçümü')
+        .setDescription('Botun gecikmesi aşağıda gösterilmiştir.')
+        .setColor(0x00AE86)
+        .addFields(
+          { name: 'API Gecikmesi', value: `${latency}ms`, inline: true },
+          { name: 'WebSocket', value: `${ws}ms`, inline: true }
+        )
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed] });
     } catch (err) {
       console.error('Ping komutu hatası:', err);
       try {
-        return interaction.reply({ content: 'Ping hesaplanırken hata oluştu.', flags: MessageFlags.Ephemeral });
+        return replyEmbed(interaction, { title: 'Hata', description: 'Ping hesaplanırken hata oluştu.', color: 0xE74C3C, ephemeral: true });
       } catch (replyErr) {
         console.error('Ping hata mesajı gönderilemedi:', replyErr);
         return null;
@@ -271,24 +323,70 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // Slash: voice
+  if (cmd === 'voice') {
+    await interaction.deferReply({ ephemeral: true });
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sadece sunucularda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
+
+    let channel = interaction.options.getChannel('kanal');
+    if (!channel) {
+      channel = interaction.member.voice.channel;
+    }
+
+    if (!channel || channel.type !== ChannelType.GuildVoice) {
+      return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen bir ses kanalı seçin veya önce ses kanalına katılın.', color: 0xE74C3C, ephemeral: true });
+    }
+
+    const existingConnection = getVoiceConnection(interaction.guild.id);
+    if (existingConnection) {
+      if (existingConnection.joinConfig.channelId === channel.id) {
+        return replyEmbed(interaction, { title: 'Bilgi', description: 'Bot zaten bu ses kanalında.', color: 0x3498DB, ephemeral: true });
+      }
+      existingConnection.destroy();
+    }
+
+    try {
+      const connection = joinVoiceChannel({
+        channelId: channel.id,
+        guildId: interaction.guild.id,
+        adapterCreator: interaction.guild.voiceAdapterCreator
+      });
+      await entersState(connection, VoiceConnectionStatus.Ready, 20000);
+      return replyEmbed(interaction, { title: 'Bağlandı', description: `${channel.name} ses kanalına bağlandım.`, color: 0x2ECC71, ephemeral: true });
+    } catch (err) {
+      console.error('Voice komutu hatası:', err);
+      return replyEmbed(interaction, { title: 'Hata', description: 'Ses kanalına bağlanırken bir hata oluştu.', color: 0xE74C3C, ephemeral: true });
+    }
+  }
+
   // DM duyuru
   if (cmd === 'dmduyuru') {
     if (!interaction.guild) {
-      return interaction.reply({ content: 'Bu komut sadece sunucularda kullanılabilir.', flags: MessageFlags.Ephemeral });
+      return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sadece sunucularda kullanılabilir.', color: 0xF1C40F, ephemeral: true });
     }
 
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', flags: MessageFlags.Ephemeral });
+      return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
     }
 
     const title = interaction.options.getString('baslik');
     const announcement = interaction.options.getString('mesaj');
-    try {
-      if (!interaction.replied && !interaction.deferred) {
+    let replyStarted = interaction.replied || interaction.deferred;
+
+    if (!replyStarted) {
+      try {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        replyStarted = true;
+      } catch (deferError) {
+        console.error('Defer reply failed for dmduyuru:', deferError);
+        try {
+          await replyEmbed(interaction, { title: 'Bilgi', description: 'DM duyurusu başlatılıyor, lütfen bekleyin...', color: 0x3498DB, ephemeral: true });
+          replyStarted = true;
+        } catch (replyError) {
+          console.error('Fallback reply failed for dmduyuru:', replyError);
+        }
       }
-    } catch (deferError) {
-      console.error('Defer reply failed for dmduyuru:', deferError);
     }
 
     try {
@@ -303,7 +401,8 @@ client.on('interactionCreate', async interaction => {
 
     for (const member of members.values()) {
       try {
-        await member.send(`## ${title} ##\n${announcement}`);
+        const dmEmbed = makeEmbed({ title, description: announcement, color: 0x00AE86, timestamp: true });
+        await member.send({ embeds: [dmEmbed] });
         success += 1;
       } catch (sendError) {
         fail += 1;
@@ -316,169 +415,169 @@ client.on('interactionCreate', async interaction => {
       await new Promise(resolve => setTimeout(resolve, DM_ANNOUNCEMENT_DELAY_MS));
     }
 
-    return interaction.editReply(`DM duyurusu tamamlandı. Başarılı: ${success}, başarısız: ${fail}`);
+    const resultMessage = `DM duyurusu tamamlandı. Başarılı: ${success}, başarısız: ${fail}`;
+    try {
+      return replyEmbed(interaction, { title: 'DM Duyuru Sonucu', description: resultMessage, color: success > 0 ? 0x2ECC71 : 0xE74C3C, ephemeral: true });
+    } catch (replyError) {
+      console.error('DM duyurusu sonuç mesajı gönderilemedi:', replyError);
+      if (!interaction.replied && !interaction.deferred) {
+        return replyEmbed(interaction, { title: 'DM Duyuru Sonucu', description: resultMessage, color: success > 0 ? 0x2ECC71 : 0xE74C3C, ephemeral: true });
+      }
+      return null;
+    }
   }
 
   // Slash: dm
   if (cmd === 'dm') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    if (!interaction.guild) return interaction.editReply('Bu komut sadece sunucularda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sadece sunucularda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
 
     const target = interaction.options.getUser('hedef');
     const dmMessage = interaction.options.getString('mesaj');
-    if (!target) return interaction.editReply('Lütfen geçerli bir kullanıcı seçin.');
+    if (!target) return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen geçerli bir kullanıcı seçin.', color: 0xE74C3C, ephemeral: true });
 
     try {
-      await target.send(dmMessage);
-      return interaction.editReply(`${target.tag} kullanıcısına DM gönderildi.`);
+      await target.send({ embeds: [makeEmbed({ title: 'Doğrudan Mesaj', description: dmMessage, color: 0x00AE86, timestamp: true })] });
+      return replyEmbed(interaction, { title: 'Başarılı', description: `${target.tag} kullanıcısına DM gönderildi.`, color: 0x2ECC71, ephemeral: true });
     } catch (err) {
       console.error('DM gönderilemedi:', err);
-      return interaction.editReply('DM gönderilirken bir hata oluştu. Kullanıcının DMleri kapalı olabilir.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'DM gönderilirken bir hata oluştu. Kullanıcının DMleri kapalı olabilir.', color: 0xE74C3C, ephemeral: true });
     }
   }
 
   // Slash: sil
   if (cmd === 'sil') {
     await interaction.deferReply({ ephemeral: true });
-    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return interaction.editReply('Bu komutu kullanmak için Mesajları Yönet iznine sahip olmanız gerekir.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sunucuda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için Mesajları Yönet iznine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
 
     const count = interaction.options.getInteger('sayi');
     if (!count || count < 1 || count > 100) {
-      return interaction.editReply('Lütfen 1 ile 100 arasında bir sayı girin.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen 1 ile 100 arasında bir sayı girin.', color: 0xE74C3C, ephemeral: true });
     }
 
     try {
       const deleted = await interaction.channel.bulkDelete(count, true);
-      return interaction.editReply(`${deleted.size} mesaj silindi.`);
+      return replyEmbed(interaction, { title: 'Mesaj Silindi', description: `${deleted.size} mesaj silindi.`, color: 0x2ECC71, ephemeral: true });
     } catch (err) {
       console.error('Silme hatası:', err);
-      return interaction.editReply('Mesajları silerken bir hata oluştu. Belki 14 günden eski mesajlar vardır.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'Mesajları silerken bir hata oluştu. Belki 14 günden eski mesajlar vardır.', color: 0xE74C3C, ephemeral: true });
     }
   }
 
   // Slash: setjoinlog
   if (cmd === 'setjoinlog') {
     await interaction.deferReply({ ephemeral: true });
-    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sunucuda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
 
     const channel = interaction.options.getChannel('kanal');
-    if (!channel) return interaction.editReply('Lütfen geçerli bir kanal seçin.');
+    if (!channel) return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen geçerli bir kanal seçin.', color: 0xE74C3C, ephemeral: true });
     if (![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
-      return interaction.editReply('Lütfen bir metin kanalı seçin.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen bir metin kanalı seçin.', color: 0xE74C3C, ephemeral: true });
     }
 
     guildSettings[interaction.guild.id] = guildSettings[interaction.guild.id] || {};
     guildSettings[interaction.guild.id].joinLog = channel.id;
     saveGuildSettings();
-    return interaction.editReply(`Giriş log kanalı ${channel.name} olarak ayarlandı.`);
+    return replyEmbed(interaction, { title: 'Ayarlandı', description: `Giriş log kanalı ${channel.name} olarak ayarlandı.`, color: 0x2ECC71, ephemeral: true });
   }
 
   // Slash: setleavelog
   if (cmd === 'setleavelog') {
     await interaction.deferReply({ ephemeral: true });
-    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sunucuda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
 
     const channel = interaction.options.getChannel('kanal');
-    if (!channel) return interaction.editReply('Lütfen geçerli bir kanal seçin.');
+    if (!channel) return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen geçerli bir kanal seçin.', color: 0xE74C3C, ephemeral: true });
     if (![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
-      return interaction.editReply('Lütfen bir metin kanalı seçin.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen bir metin kanalı seçin.', color: 0xE74C3C, ephemeral: true });
     }
 
     guildSettings[interaction.guild.id] = guildSettings[interaction.guild.id] || {};
     guildSettings[interaction.guild.id].leaveLog = channel.id;
     saveGuildSettings();
-    return interaction.editReply(`Çıkış log kanalı ${channel.name} olarak ayarlandı.`);
+    return replyEmbed(interaction, { title: 'Ayarlandı', description: `Çıkış log kanalı ${channel.name} olarak ayarlandı.`, color: 0x2ECC71, ephemeral: true });
   }
 
   // Slash: setspamwatch
   if (cmd === 'setspamwatch') {
     await interaction.deferReply({ ephemeral: true });
-    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sunucuda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
 
     const watch = interaction.options.getChannel('watch');
     const target = interaction.options.getChannel('target');
-    if (!watch) return interaction.editReply('Lütfen izlenecek bir kanal seçin.');
-    if (![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(watch.type)) return interaction.editReply('Lütfen izlenecek kanal olarak bir metin kanalı seçin.');
-    if (target && ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(target.type)) return interaction.editReply('Lütfen hedef kanal olarak bir metin kanalı seçin.');
+    if (!watch) return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen izlenecek bir kanal seçin.', color: 0xE74C3C, ephemeral: true });
+    if (![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(watch.type)) return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen izlenecek kanal olarak bir metin kanalı seçin.', color: 0xE74C3C, ephemeral: true });
+    if (target && ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(target.type)) return replyEmbed(interaction, { title: 'Hata', description: 'Lütfen hedef kanal olarak bir metin kanalı seçin.', color: 0xE74C3C, ephemeral: true });
 
     guildSettings[interaction.guild.id] = guildSettings[interaction.guild.id] || {};
     guildSettings[interaction.guild.id].spamWatch = watch.id;
     if (target) guildSettings[interaction.guild.id].spamTarget = target.id;
     saveGuildSettings();
-    return interaction.editReply(`Spam watch ayarlandı. İzlenen: ${watch.name}${target ? `, hedef: ${target.name}` : ''}`);
+    return replyEmbed(interaction, { title: 'Ayarlandı', description: `Spam watch ayarlandı. İzlenen: ${watch.name}${target ? `, hedef: ${target.name}` : ''}`, color: 0x2ECC71, ephemeral: true });
   }
 
   // Ban
   if (cmd === 'ban') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) return interaction.editReply('Yeterli iznin yok.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sunucuda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Yeterli iznin yok.', color: 0xE74C3C, ephemeral: true });
 
     const user = interaction.options.getUser('hedef');
     const reason = interaction.options.getString('sebep') || `Yasaklandı by ${interaction.user.tag}`;
     try {
       const member = await interaction.guild.members.fetch(user.id);
-      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.BanMembers)) return interaction.editReply('Botun yeterli izni yok.');
+      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.BanMembers)) return replyEmbed(interaction, { title: 'Hata', description: 'Botun yeterli izni yok.', color: 0xE74C3C, ephemeral: true });
       await member.ban({ reason });
-      return interaction.editReply(`${user.tag} başarıyla yasaklandı. Sebep: ${reason}`);
+      return replyEmbed(interaction, { title: 'Yasaklandı', description: `${user.tag} başarıyla yasaklandı. Sebep: ${reason}`, color: 0x2ECC71, ephemeral: true });
     } catch (err) {
       console.error('Ban hatası:', err);
-      return interaction.editReply('Yasaklama sırasında bir hata oluştu.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'Yasaklama sırasında bir hata oluştu.', color: 0xE74C3C, ephemeral: true });
     }
   }
 
   // Kick
   if (cmd === 'kick') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) return interaction.editReply('Yeterli iznin yok.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sunucuda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Yeterli iznin yok.', color: 0xE74C3C, ephemeral: true });
 
     const user = interaction.options.getUser('hedef');
     const reason = interaction.options.getString('sebep') || `Atıldı by ${interaction.user.tag}`;
     try {
       const member = await interaction.guild.members.fetch(user.id);
-      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.KickMembers)) return interaction.editReply('Botun yeterli izni yok.');
+      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.KickMembers)) return replyEmbed(interaction, { title: 'Hata', description: 'Botun yeterli izni yok.', color: 0xE74C3C, ephemeral: true });
       await member.kick(reason);
-      return interaction.editReply(`${user.tag} sunucudan atıldı. Sebep: ${reason}`);
+      return replyEmbed(interaction, { title: 'Atıldı', description: `${user.tag} sunucudan atıldı. Sebep: ${reason}`, color: 0x2ECC71, ephemeral: true });
     } catch (err) {
       console.error('Kick hatası:', err);
-      return interaction.editReply('Atma sırasında bir hata oluştu.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'Atma sırasında bir hata oluştu.', color: 0xE74C3C, ephemeral: true });
     }
   }
 
   // Mute (timeout)
   if (cmd === 'mute') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.editReply('Yeterli iznin yok.');
+    if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sunucuda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Yeterli iznin yok.', color: 0xE74C3C, ephemeral: true });
 
     const user = interaction.options.getUser('hedef');
     const minutes = interaction.options.getInteger('süre') || 10;
     const reason = interaction.options.getString('sebep') || `Susturuldu by ${interaction.user.tag}`;
     try {
       const member = await interaction.guild.members.fetch(user.id);
-      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return interaction.editReply('Botun yeterli izni yok.');
+      if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ModerateMembers)) return replyEmbed(interaction, { title: 'Hata', description: 'Botun yeterli izni yok.', color: 0xE74C3C, ephemeral: true });
       const ms = Math.max(1, minutes) * 60 * 1000;
       await member.timeout(ms, reason);
-      return interaction.editReply(`${user.tag} ${minutes} dakika susturuldu. Sebep: ${reason}`);
+      return replyEmbed(interaction, { title: 'Susturuldu', description: `${user.tag} ${minutes} dakika susturuldu. Sebep: ${reason}`, color: 0x2ECC71, ephemeral: true });
     } catch (err) {
       console.error('Mute hatası:', err);
-      return interaction.editReply('Susturma sırasında bir hata oluştu.');
+      return replyEmbed(interaction, { title: 'Hata', description: 'Susturma sırasında bir hata oluştu.', color: 0xE74C3C, ephemeral: true });
     }
-  }
-});
-
-client.on('guildCreate', async guild => {
-  try {
-    await guild.commands.set(slashCommands.filter(Boolean));
-    console.log(`Slash komutlar ${guild.name} sunucusuna kaydedildi (yeni sunucu).`);
-  } catch (error) {
-    console.error('Yeni sunucu için slash komut kaydı sırasında hata:', error);
   }
 });
 
@@ -490,8 +589,13 @@ client.on('guildMemberAdd', async member => {
     if (announcementId) {
       const announcementChannel = member.guild.channels.cache.get(announcementId) || await member.guild.channels.fetch(announcementId).catch(() => null);
       if (announcementChannel && typeof announcementChannel.send === 'function') {
-        const text = `Hoş geldin, ${member}! Sunucu üye sayısı: ${member.guild.memberCount}`;
-        await announcementChannel.send(text);
+        const embed = makeEmbed({
+          title: 'Yeni Üye Katıldı',
+          description: `Hoş geldin, ${member}!`,
+          fields: [{ name: 'Üye Sayısı', value: `${member.guild.memberCount}`, inline: true }],
+          color: 0x00AE86
+        });
+        await announcementChannel.send({ embeds: [embed] });
       }
     }
 
@@ -500,8 +604,16 @@ client.on('guildMemberAdd', async member => {
     if (joinLogId) {
       const joinChannel = member.guild.channels.cache.get(joinLogId) || await member.guild.channels.fetch(joinLogId).catch(() => null);
       if (joinChannel && typeof joinChannel.send === 'function') {
-        const log = `Giriş: ${member.user.tag} (ID: ${member.id}) — Üye sayısı: ${member.guild.memberCount}`;
-        await joinChannel.send(log);
+        const embed = makeEmbed({
+          title: 'Üye Girişi',
+          description: `${member.user.tag} sunucuya katıldı.`,
+          fields: [
+            { name: 'Kullanıcı', value: `${member.user.tag}`, inline: true },
+            { name: 'Üye Sayısı', value: `${member.guild.memberCount}`, inline: true }
+          ],
+          color: 0x3498DB
+        });
+        await joinChannel.send({ embeds: [embed] });
       }
     }
   } catch (err) {
@@ -518,8 +630,16 @@ client.on('guildMemberRemove', async member => {
     const leaveChannel = member.guild.channels.cache.get(leaveLogId) || await member.guild.channels.fetch(leaveLogId).catch(() => null);
     if (!leaveChannel || typeof leaveChannel.send !== 'function') return;
 
-    const log = `Ayrıldı: ${member.user.tag} (ID: ${member.id}) — Üye sayısı: ${member.guild.memberCount}`;
-    await leaveChannel.send(log);
+    const embed = makeEmbed({
+      title: 'Üye Ayrıldı',
+      description: `${member.user.tag} sunucudan ayrıldı.`,
+      fields: [
+        { name: 'Kullanıcı', value: `${member.user.tag}`, inline: true },
+        { name: 'Üye Sayısı', value: `${member.guild.memberCount}`, inline: true }
+      ],
+      color: 0xE67E22
+    });
+    await leaveChannel.send({ embeds: [embed] });
   } catch (err) {
     console.error('Leave log error:', err);
   }
@@ -577,85 +697,29 @@ client.on('messageCreate', async message => {
   }
 
   if (message.content === '!ping') {
-    return message.channel.send('Pong!');
-  }
-
-  const voiceMatch = message.content.match(/^\.voice\s+(.+)$/i);
-  if (voiceMatch) {
-    const commandKey = `${message.guild.id}:${message.author.id}:voice`;
-    if (recentVoiceCommands.has(commandKey)) {
-      return null;
-    }
-    recentVoiceCommands.add(commandKey);
-    setTimeout(() => recentVoiceCommands.delete(commandKey), 1500);
-
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.channel.send('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
-    }
-
-    const channelId = voiceMatch[1].replace(/\D/g, '');
-    if (!channelId) {
-      return message.channel.send('Lütfen geçerli bir ses kanalı IDsi girin. Kullanım: `.voice <kanalId>`');
-    }
-
-    const processingKey = `${message.guild.id}:${message.author.id}:${channelId}`;
-    if (processingVoiceCommands.has(processingKey)) {
-      return null;
-    }
-    processingVoiceCommands.add(processingKey);
-
-    try {
-      const channel = message.guild.channels.cache.get(channelId) || await message.guild.channels.fetch(channelId).catch(() => null);
-      if (!channel || channel.type !== ChannelType.GuildVoice) {
-        return message.channel.send('Geçerli bir ses kanalı bulunamadı. Lütfen kanal IDsi girin.');
-      }
-
-      const existingConnection = getVoiceConnection(message.guild.id);
-      if (existingConnection) {
-        if (existingConnection.joinConfig.channelId === channelId) {
-          return message.reply('Bot zaten bu ses kanalında.');
-        }
-        existingConnection.destroy();
-      }
-
-      const connection = joinVoiceChannel({
-        channelId: channel.id,
-        guildId: message.guild.id,
-        adapterCreator: message.guild.voiceAdapterCreator
-      });
-
-      try {
-        await entersState(connection, VoiceConnectionStatus.Ready, 20000);
-        return message.channel.send(`${channel.name} ses kanalına girdim.`);
-      } catch (error) {
-        connection.destroy();
-        console.error('Ses kanalına girerken hata:', error);
-        return message.channel.send('Ses kanalına girerken bir hata oluştu. Lütfen tekrar deneyin.');
-      }
-    } finally {
-      processingVoiceCommands.delete(processingKey);
-    }
+    const embed = makeEmbed({ title: 'Pong!', description: 'Komut başarıyla çalıştı.', color: 0x00AE86 });
+    return message.channel.send({ embeds: [embed] });
   }
 
   if (message.content.trim() === '.leave') {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.channel.send('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+      return message.channel.send({ embeds: [makeEmbed({ title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C })] });
     }
 
     const connection = getVoiceConnection(message.guild.id);
     if (!connection) {
-      return message.channel.send('Bot şu anda hiçbir ses kanalında değil.');
+      return message.channel.send({ embeds: [makeEmbed({ title: 'Bilgi', description: 'Bot şu anda hiçbir ses kanalında değil.', color: 0xF1C40F })] });
     }
 
     connection.destroy();
-    return message.channel.send('Ses kanalından ayrıldım.');
+    return message.channel.send({ embeds: [makeEmbed({ title: 'Ayrıldı', description: 'Ses kanalından ayrıldım.', color: 0x2ECC71 })] });
   }
 
   // Kanalda duyuru: ## <başlık> ## Başlık: ... Mesaj: ... (başlık sizin seçiminizdir)
   const kanalDuyuruMatch = message.content.match(/^##\s*(.+?)\s*##\s*Başlık:\s*(.+?)\s*Mesaj:\s*([\s\S]+)/i) || message.content.match(/^##\s*(.+?)\s*##\s*Baslik:\s*(.+?)\s*Mesaj:\s*([\s\S]+)/i);
   if (kanalDuyuruMatch) {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.channel.send('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+      return message.channel.send({ embeds: [makeEmbed({ title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C })] });
     }
 
     const header = kanalDuyuruMatch[1].trim();
@@ -663,15 +727,21 @@ client.on('messageCreate', async message => {
     const body = kanalDuyuruMatch[3].trim();
 
     if (!header || !title || !body) {
-      return message.channel.send('Kullanım: `## <başlık> ## Başlık: <başlık> Mesaj: <mesaj>`');
+      return message.channel.send({ embeds: [makeEmbed({ title: 'Kullanım Hatası', description: 'Kullanım: `## <başlık> ## Başlık: <başlık> Mesaj: <mesaj>`', color: 0xE74C3C })] });
     }
 
     try {
-      await message.channel.send(`${header}\n**${title}**\n\n${body}`);
-      return message.channel.send('Duyuru kanala gönderildi.');
+      const announcementEmbed = makeEmbed({
+        title: header,
+        description: body,
+        fields: [{ name: title, value: body }],
+        color: 0x1ABC9C
+      });
+      await message.channel.send({ embeds: [announcementEmbed] });
+      return message.channel.send({ embeds: [makeEmbed({ title: 'Duyuru Gönderildi', description: 'Kanal duyurusu başarıyla gönderildi.', color: 0x2ECC71 })] });
     } catch (err) {
       console.error('Kanal duyurusu gönderilemedi:', err);
-      return message.channel.send('Duyuru gönderilirken bir hata oluştu.');
+      return message.channel.send({ embeds: [makeEmbed({ title: 'Hata', description: 'Duyuru gönderilirken bir hata oluştu.', color: 0xE74C3C })] });
     }
   }
 
@@ -679,12 +749,12 @@ client.on('messageCreate', async message => {
   if (!dmMatch) return;
 
   if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-    return message.channel.send('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+    return message.channel.send({ embeds: [makeEmbed({ title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C })] });
   }
 
   const announcement = dmMatch[2].trim();
   if (!announcement) {
-    return message.channel.send('Lütfen duyuru metnini girin. Kullanım: `!dmduyuru <duyuru>` veya `!dm duyuru <duyuru>`');
+    return message.channel.send({ embeds: [makeEmbed({ title: 'Eksik Metin', description: 'Lütfen duyuru metnini girin. Kullanım: `!dmduyuru <duyuru>` veya `!dm duyuru <duyuru>`', color: 0xE74C3C })] });
   }
 
   try {
@@ -697,9 +767,11 @@ client.on('messageCreate', async message => {
   let success = 0;
   let fail = 0;
 
+  const dmEmbed = makeEmbed({ title: 'Sunucu Duyurusu', description: announcement, color: 0x1ABC9C });
+
   for (const member of members.values()) {
     try {
-      await member.send(announcement);
+      await member.send({ embeds: [dmEmbed] });
       success += 1;
     } catch (sendError) {
       fail += 1;
@@ -712,7 +784,7 @@ client.on('messageCreate', async message => {
     await new Promise(resolve => setTimeout(resolve, DM_ANNOUNCEMENT_DELAY_MS));
   }
 
-  return message.channel.send(`DM duyurusu tamamlandı. Başarılı: ${success}, başarısız: ${fail}`);
+  return message.channel.send({ embeds: [makeEmbed({ title: 'DM Duyurusu Tamamlandı', description: `Başarılı: ${success}, başarısız: ${fail}`, color: 0x2ECC71 })] });
 });
 
 client.login(token);
