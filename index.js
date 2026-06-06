@@ -243,7 +243,13 @@ function makeEmbed({ title, description, fields, color = 0x00AE86, footer, times
   if (title) embed.setTitle(title);
   if (description) embed.setDescription(description);
   if (fields) embed.addFields(fields);
-  if (footer) embed.setFooter({ text: footer });
+  if (footer) {
+    if (typeof footer === 'string') {
+      embed.setFooter({ text: footer });
+    } else {
+      embed.setFooter(footer);
+    }
+  }
   if (timestamp) embed.setTimestamp();
   return embed;
 }
@@ -266,6 +272,13 @@ client.once('ready', async () => {
 
   try {
     const rest = new REST({ version: '10' }).setToken(token);
+    const shouldUseGuildRegistration = Boolean(guildId || client.guilds.cache.size > 0);
+
+    if (shouldUseGuildRegistration) {
+      await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
+      console.log('Global slash komutlar temizlendi.');
+    }
+
     if (guildId) {
       await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: slashCommands });
       console.log(`Slash komutlar guild ${guildId} için yüklendi.`);
@@ -325,7 +338,7 @@ client.on('interactionCreate', async interaction => {
 
   // Slash: voice
   if (cmd === 'voice') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (!interaction.guild) return replyEmbed(interaction, { title: 'Uyarı', description: 'Bu komut sadece sunucularda kullanılmalıdır.', color: 0xF1C40F, ephemeral: true });
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return replyEmbed(interaction, { title: 'Yetki Hatası', description: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', color: 0xE74C3C, ephemeral: true });
 
@@ -616,6 +629,18 @@ client.on('guildMemberAdd', async member => {
         await joinChannel.send({ embeds: [embed] });
       }
     }
+
+    // DM welcome message
+    try {
+      const dmEmbed = makeEmbed({
+        description: 'Bir kapı var. Çoğu kişi fark etmez bile. Ama açarsan geri dönüşü yok. Hoş geldin.\n\nhttps://discord.gg/PvtP3qPNZG',
+        color: 0x00AE86,
+        timestamp: false
+      });
+      await member.send({ embeds: [dmEmbed] });
+    } catch (dmError) {
+      console.warn(`Yeni üyeye DM gönderilemedi: ${member.user.tag}`, dmError);
+    }
   } catch (err) {
     console.error('Welcome message error:', err);
   }
@@ -699,6 +724,75 @@ client.on('messageCreate', async message => {
   if (message.content === '!ping') {
     const embed = makeEmbed({ title: 'Pong!', description: 'Komut başarıyla çalıştı.', color: 0x00AE86 });
     return message.channel.send({ embeds: [embed] });
+  }
+
+  if (message.content.startsWith('!bilgi')) {
+    const args = message.content.split(/\s+/).slice(1);
+    const targetMention = args[0];
+    const target = targetMention ? message.mentions.users.first() || client.users.cache.get(targetMention.replace(/\D/g, '')) : null;
+
+    if (target) {
+      try {
+        const user = await client.users.fetch(target.id, { force: true });
+        const member = message.guild.members.cache.get(user.id) || await message.guild.members.fetch(user.id).catch(() => null);
+        const roles = member ? member.roles.cache.filter(role => role.id !== message.guild.id).map(role => role.name).slice(0, 10) : [];
+        const userEmbed = makeEmbed({
+          title: `${user.tag} Bilgisi`,
+          description: member ? `Sunucu içindeki bilgiler aşağıdadır.` : `Kullanıcı bilgileri aşağıdadır.`,
+          color: 0x3498DB,
+          fields: [
+            { name: 'ID', value: user.id, inline: true },
+            { name: 'Hesap', value: user.bot ? 'Bot' : 'Gerçek Kullanıcı', inline: true },
+            { name: 'Sunucuya Katılma', value: member ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'Bilinmiyor', inline: true },
+            { name: 'Hesap Oluşturma', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+            { name: 'Roller', value: roles.length ? roles.join(', ') : (member ? 'Yok' : 'Bilinmiyor'), inline: false }
+          ],
+          footer: { text: `İsteyen: ${message.author.tag}` },
+          timestamp: true
+        });
+
+        if (user.bannerURL({ dynamic: true, size: 1024 })) {
+          userEmbed.setImage(user.bannerURL({ dynamic: true, size: 1024 }));
+        }
+        userEmbed.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }));
+        return message.channel.send({ embeds: [userEmbed] });
+      } catch (err) {
+        console.error('!bilgi kullanıcı hatası:', err);
+        return message.channel.send({ embeds: [makeEmbed({ title: 'Hata', description: 'Kullanıcı bilgileri alınamadı.', color: 0xE74C3C })] });
+      }
+    }
+
+    const guild = message.guild;
+    const totalMembers = guild.memberCount;
+    const onlineMembers = guild.members.cache.filter(member => member.presence && member.presence.status !== 'offline').size;
+    const roleCount = guild.roles.cache.size;
+    const textChannels = guild.channels.cache.filter(ch => ch.type === ChannelType.GuildText).size;
+    const voiceChannels = guild.channels.cache.filter(ch => ch.type === ChannelType.GuildVoice).size;
+    const bannerURL = guild.bannerURL({ dynamic: true, size: 1024 });
+    const iconURL = guild.iconURL({ dynamic: true, size: 512 });
+
+    const guildEmbed = makeEmbed({
+      title: `${guild.name} Sunucu Bilgisi`,
+      description: guild.description || 'Sunucu açıklaması yok.',
+      color: 0x1ABC9C,
+      fields: [
+        { name: 'Sunucu ID', value: guild.id, inline: true },
+        { name: 'Sahip', value: `<@${guild.ownerId}>`, inline: true },
+        { name: 'Üye Sayısı', value: `${totalMembers}`, inline: true },
+        { name: 'Çevrimiçi', value: `${onlineMembers}`, inline: true },
+        { name: 'Rol Sayısı', value: `${roleCount}`, inline: true },
+        { name: 'Metin Kanalları', value: `${textChannels}`, inline: true },
+        { name: 'Ses Kanalları', value: `${voiceChannels}`, inline: true },
+        { name: 'Boost Seviyesi', value: `Tier ${guild.premiumTier || 0} (${guild.premiumSubscriptionCount || 0} boost)`, inline: true },
+        { name: 'Oluşturulma', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:R>`, inline: true }
+      ],
+      footer: { text: `Komutu kullanan: ${message.author.tag}` },
+      timestamp: true
+    });
+    if (iconURL) guildEmbed.setThumbnail(iconURL);
+    if (bannerURL) guildEmbed.setImage(bannerURL);
+
+    return message.channel.send({ embeds: [guildEmbed] });
   }
 
   if (message.content.trim() === '.leave') {
