@@ -17,6 +17,7 @@ const client = new Client({
 const recentMessageIds = new Set();
 const recentVoiceCommands = new Set();
 const processingVoiceCommands = new Set();
+const DM_ANNOUNCEMENT_DELAY_MS = 5000;
 
 const token = process.env.DISCORD_TOKEN || process.env.BOT_TOKEN;
 const tokenSource = process.env.DISCORD_TOKEN ? 'DISCORD_TOKEN' : process.env.BOT_TOKEN ? 'BOT_TOKEN' : null;
@@ -261,7 +262,13 @@ client.on('interactionCreate', async interaction => {
         success += 1;
       } catch (sendError) {
         fail += 1;
+        if (sendError && sendError.status === 429) {
+          const retry = sendError.retryAfter || DM_ANNOUNCEMENT_DELAY_MS;
+          console.warn(`DM rate limited, waiting ${retry}ms`);
+          await new Promise(resolve => setTimeout(resolve, retry));
+        }
       }
+      await new Promise(resolve => setTimeout(resolve, DM_ANNOUNCEMENT_DELAY_MS));
     }
 
     return interaction.editReply(`DM duyurusu tamamlandı. Başarılı: ${success}, başarısız: ${fail}`);
@@ -614,7 +621,13 @@ client.on('messageCreate', async message => {
       success += 1;
     } catch (sendError) {
       fail += 1;
+      if (sendError && sendError.status === 429) {
+        const retry = sendError.retryAfter || DM_ANNOUNCEMENT_DELAY_MS;
+        console.warn(`DM rate limited, waiting ${retry}ms`);
+        await new Promise(resolve => setTimeout(resolve, retry));
+      }
     }
+    await new Promise(resolve => setTimeout(resolve, DM_ANNOUNCEMENT_DELAY_MS));
   }
 
   return message.channel.send(`DM duyurusu tamamlandı. Başarılı: ${success}, başarısız: ${fail}`);
