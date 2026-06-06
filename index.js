@@ -36,9 +36,35 @@ const slashCommands = [
     dmPermission: false,
     options: [
       {
+        name: 'baslik',
+        type: 3,
+        description: 'Duyurunun başlığı',
+        required: true
+      },
+      {
         name: 'mesaj',
         type: 3,
         description: 'Gönderilecek duyuru metni',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'dm',
+    description: 'Belirtilen kullanıcıya bot aracılığıyla DM gönderir',
+    defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
+    dmPermission: true,
+    options: [
+      {
+        name: 'hedef',
+        type: 6,
+        description: 'Mesaj gönderilecek kullanıcı',
+        required: true
+      },
+      {
+        name: 'mesaj',
+        type: 3,
+        description: 'Gönderilecek mesaj',
         required: true
       }
     ]
@@ -114,8 +140,20 @@ const slashCommands = [
       }
     ]
   },
-  
-  ,
+  {
+    name: 'sil',
+    description: 'Kanaldan son mesajları siler',
+    defaultMemberPermissions: PermissionsBitField.Flags.ManageMessages,
+    dmPermission: false,
+    options: [
+      {
+        name: 'sayi',
+        type: 4,
+        description: 'Silinecek mesaj sayısı (1-200)',
+        required: true
+      }
+    ]
+  },
   {
     name: 'setjoinlog',
     description: 'Giriş log kanalı ayarla',
@@ -243,8 +281,15 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: 'Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.', flags: MessageFlags.Ephemeral });
     }
 
+    const title = interaction.options.getString('baslik');
     const announcement = interaction.options.getString('mesaj');
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      }
+    } catch (deferError) {
+      console.error('Defer reply failed for dmduyuru:', deferError);
+    }
 
     try {
       await interaction.guild.members.fetch();
@@ -258,7 +303,7 @@ client.on('interactionCreate', async interaction => {
 
     for (const member of members.values()) {
       try {
-        await member.send(announcement);
+        await member.send(`## ${title} ##\n${announcement}`);
         success += 1;
       } catch (sendError) {
         fail += 1;
@@ -274,7 +319,44 @@ client.on('interactionCreate', async interaction => {
     return interaction.editReply(`DM duyurusu tamamlandı. Başarılı: ${success}, başarısız: ${fail}`);
   }
 
-  
+  // Slash: dm
+  if (cmd === 'dm') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guild) return interaction.editReply('Bu komut sadece sunucularda kullanılmalıdır.');
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.editReply('Bu komutu kullanmak için yönetici yetkisine sahip olmanız gerekir.');
+
+    const target = interaction.options.getUser('hedef');
+    const dmMessage = interaction.options.getString('mesaj');
+    if (!target) return interaction.editReply('Lütfen geçerli bir kullanıcı seçin.');
+
+    try {
+      await target.send(dmMessage);
+      return interaction.editReply(`${target.tag} kullanıcısına DM gönderildi.`);
+    } catch (err) {
+      console.error('DM gönderilemedi:', err);
+      return interaction.editReply('DM gönderilirken bir hata oluştu. Kullanıcının DMleri kapalı olabilir.');
+    }
+  }
+
+  // Slash: sil
+  if (cmd === 'sil') {
+    await interaction.deferReply({ ephemeral: true });
+    if (!interaction.guild) return interaction.editReply('Bu komut sunucuda kullanılmalıdır.');
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return interaction.editReply('Bu komutu kullanmak için Mesajları Yönet iznine sahip olmanız gerekir.');
+
+    const count = interaction.options.getInteger('sayi');
+    if (!count || count < 1 || count > 100) {
+      return interaction.editReply('Lütfen 1 ile 100 arasında bir sayı girin.');
+    }
+
+    try {
+      const deleted = await interaction.channel.bulkDelete(count, true);
+      return interaction.editReply(`${deleted.size} mesaj silindi.`);
+    } catch (err) {
+      console.error('Silme hatası:', err);
+      return interaction.editReply('Mesajları silerken bir hata oluştu. Belki 14 günden eski mesajlar vardır.');
+    }
+  }
 
   // Slash: setjoinlog
   if (cmd === 'setjoinlog') {
