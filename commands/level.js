@@ -17,7 +17,7 @@ module.exports = {
   },
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply();
 
     const target = interaction.options.getUser('kullanici') || interaction.user;
     const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
@@ -31,7 +31,7 @@ module.exports = {
       fields: [
         { name: 'Seviye', value: `${levelData.level}`, inline: true },
         { name: 'XP', value: `${levelData.currentXp}/${levelData.nextThreshold}`, inline: true },
-        { name: 'Mesaj Sayısı', value: `${levelData.messages}`, inline: true },
+        { name: 'Cümle Sayısı', value: `${levelData.sentences}`, inline: true },
         { name: 'Kalan XP', value: `${levelData.remainingXp}`, inline: true },
         { name: 'İlerleme', value: progressBar(levelData.currentXp, levelData.nextThreshold), inline: false }
       ],

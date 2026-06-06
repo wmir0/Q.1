@@ -89,11 +89,11 @@ module.exports = {
           fields: [
             { name: 'Kazandığın XP', value: `${levelInfo.earned}`, inline: true },
             { name: 'Bir sonraki seviyeye XP', value: `${levelInfo.remainingXp}`, inline: true },
-            { name: 'Toplam Mesaj', value: `${levelInfo.messages}`, inline: true },
+            { name: 'Cümle Sayısı', value: `${levelInfo.sentences}`, inline: true },
             { name: 'İlerleme', value: progressBar(levelInfo.currentXp, levelInfo.nextThreshold), inline: false },
             ...(roleField ? [roleField] : [])
           ],
-          footer: { text: 'Her mesajın seni daha da güçlendirir.' },
+          footer: { text: 'Her cümlen seni daha hızlı yükseltir.' },
           timestamp: true
         });
         await message.channel.send({ embeds: [levelEmbed] });

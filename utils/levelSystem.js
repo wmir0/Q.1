@@ -35,9 +35,10 @@ function getCurrentLevel(totalXp) {
 
 function getLevelData(guildId, userId) {
   levelData[guildId] = levelData[guildId] || {};
-  levelData[guildId][userId] = levelData[guildId][userId] || { xp: 0, messages: 0 };
+  levelData[guildId][userId] = levelData[guildId][userId] || { xp: 0, sentences: 0, messages: 0 };
 
   const user = levelData[guildId][userId];
+  const sentenceCount = user.sentences ?? user.messages ?? 0;
   const level = getCurrentLevel(user.xp);
   const previousThreshold = xpForLevel(level - 1);
   const currentXp = user.xp - previousThreshold;
@@ -46,7 +47,8 @@ function getLevelData(guildId, userId) {
   return {
     totalXp: user.xp,
     level,
-    messages: user.messages,
+    sentences: sentenceCount,
+    messages: sentenceCount,
     currentXp,
     nextThreshold,
     remainingXp: nextThreshold - currentXp
@@ -78,16 +80,35 @@ function getMilestoneRoleNames() {
   return Object.values(LEVEL_ROLE_DEFINITIONS).map(def => def.name);
 }
 
+function getSentenceTexts(messageContent) {
+  const trimmed = messageContent.trim();
+  if (!trimmed) return [];
+  const sentences = trimmed
+    .split(/(?:[.!?]+|[\r\n]+)\s*/)
+    .map(str => str.trim())
+    .filter(Boolean);
+  return sentences.length ? sentences : [trimmed];
+}
+
+function xpForSentence(sentence) {
+  const value = Math.max(5, Math.floor(sentence.length / 15) + 5);
+  return Math.min(15, value);
+}
+
 function addMessageXp(guildId, userId, messageContent) {
   const trimmed = messageContent?.trim();
   if (!trimmed || trimmed.length < 5) return null;
 
-  const earned = Math.min(25, Math.max(5, Math.floor(trimmed.length / 10) + 5));
+  const sentenceTexts = getSentenceTexts(trimmed);
+  const sentenceCount = sentenceTexts.length;
+  const earned = Math.min(45, sentenceTexts.reduce((sum, sentence) => sum + xpForSentence(sentence), 0));
+
   const user = getLevelData(guildId, userId);
   const previousLevel = user.level;
 
   levelData[guildId][userId].xp += earned;
-  levelData[guildId][userId].messages += 1;
+  levelData[guildId][userId].sentences = (levelData[guildId][userId].sentences ?? levelData[guildId][userId].messages ?? 0) + sentenceCount;
+  levelData[guildId][userId].messages = levelData[guildId][userId].sentences;
   saveLevelData();
 
   const updated = getLevelData(guildId, userId);
@@ -96,8 +117,36 @@ function addMessageXp(guildId, userId, messageContent) {
   return {
     ...updated,
     earned,
+    sentences: sentenceCount,
     leveledUp
   };
 }
 
-module.exports = { addMessageXp, getLevelData, progressBar, xpForLevel, getMilestoneRoleDefinition, getMilestoneRoleNames };
+function getLeaderboard(guildId, limit = 10) {
+  const guildLevelData = levelData[guildId] || {};
+  return Object.entries(guildLevelData)
+    .map(([userId, user]) => {
+      const totalXp = user.xp || 0;
+      return {
+        userId,
+        totalXp,
+        level: getCurrentLevel(totalXp),
+        sentences: user.sentences ?? user.messages ?? 0
+      };
+    })
+    .sort((a, b) => {
+      if (b.totalXp !== a.totalXp) return b.totalXp - a.totalXp;
+      return b.sentences - a.sentences;
+    })
+    .slice(0, limit);
+}
+
+module.exports = {
+  addMessageXp,
+  getLevelData,
+  getLeaderboard,
+  progressBar,
+  xpForLevel,
+  getMilestoneRoleDefinition,
+  getMilestoneRoleNames
+};
