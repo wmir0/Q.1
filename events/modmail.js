@@ -3,6 +3,7 @@ const { makeEmbed } = require('../utils/embed');
 
 const MODMAIL_CHANNEL_ID = '1513180695818801276';
 const REPLY_PREFIX = '!cevap';
+const processedMessages = new Set();
 
 function formatAttachments(message) {
   if (!message.attachments.size) return null;
@@ -18,6 +19,9 @@ module.exports = {
   name: 'messageCreate',
   async execute(message) {
     if (message.author.bot) return;
+    if (processedMessages.has(message.id)) return;
+    processedMessages.add(message.id);
+    setTimeout(() => processedMessages.delete(message.id), 60000);
 
     if (message.channel.type === ChannelType.DM) {
       const modmailChannel = await message.client.channels.fetch(MODMAIL_CHANNEL_ID).catch(() => null);
