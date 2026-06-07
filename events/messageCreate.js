@@ -1,12 +1,14 @@
 const { ChannelType, PermissionsBitField } = require('discord.js');
 const { makeEmbed } = require('../utils/embed');
 const { addMessageXp, progressBar, getMilestoneRoleDefinition, getMilestoneRoleNames } = require('../utils/levelSystem');
+const { handleModmail } = require('../utils/modmail');
 const spamState = {};
 const recentMessageIds = new Set();
 
 module.exports = {
   name: 'messageCreate',
   async execute(message) {
+    if (await handleModmail(message)) return;
     if (message.author.bot || !message.guild) return;
     if (recentMessageIds.has(message.id)) return;
     recentMessageIds.add(message.id);
