@@ -1,8 +1,11 @@
+const fs = require('fs');
+const path = require('path');
 const { ChannelType, EmbedBuilder } = require('discord.js');
 const { makeEmbed } = require('./embed');
 
 const MODMAIL_CHANNEL_ID = '1513180695818801276';
 const REPLY_PREFIX = '!cevap';
+const LOCK_DIR = path.resolve(__dirname, '..', '.modmail-locks');
 const processedMessages = new Set();
 
 function formatAttachments(message) {
@@ -15,6 +18,22 @@ async function sendUserDm(client, userId, content) {
   return user.send(content);
 }
 
+function lockMessage(messageId) {
+  fs.mkdirSync(LOCK_DIR, { recursive: true });
+
+  const lockFile = path.join(LOCK_DIR, `${messageId}.lock`);
+  try {
+    const fd = fs.openSync(lockFile, 'wx');
+    fs.closeSync(fd);
+    setTimeout(() => fs.rmSync(lockFile, { force: true }), 10 * 60 * 1000);
+    return true;
+  } catch (err) {
+    if (err.code === 'EEXIST') return false;
+    console.error('Modmail kilit hatası:', err);
+    return true;
+  }
+}
+
 async function handleModmail(message) {
   if (message.author.bot) return true;
   if (processedMessages.has(message.id)) return true;
@@ -25,6 +44,8 @@ async function handleModmail(message) {
   }
 
   if (message.channel.type === ChannelType.DM) {
+    if (!lockMessage(message.id)) return true;
+
     const modmailChannel = await message.client.channels.fetch(MODMAIL_CHANNEL_ID).catch(() => null);
     if (!modmailChannel || !modmailChannel.isTextBased()) return true;
 

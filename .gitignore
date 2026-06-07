@@ -1,3 +1,4 @@
 .env
 node_modules/
 levels.json
+.modmail-locks/
