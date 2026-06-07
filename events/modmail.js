@@ -11,16 +11,7 @@ function formatAttachments(message) {
 
 async function sendUserDm(client, userId, content) {
   const user = await client.users.fetch(userId);
-  return user.send({
-    embeds: [
-      makeEmbed({
-        title: 'Yetkili Cevabı',
-        description: content,
-        color: 0x3498DB,
-        footer: 'Bu mesaja cevap vererek tekrar yetkililere ulaşabilirsin.'
-      })
-    ]
-  });
+  return user.send(content);
 }
 
 module.exports = {
@@ -70,15 +61,7 @@ module.exports = {
 
     try {
       await sendUserDm(message.client, userId, replyText);
-      return message.reply({
-        embeds: [
-          makeEmbed({
-            title: 'Cevap Gönderildi',
-            description: `<@${userId}> kullanıcısına DM gönderildi.`,
-            color: 0x2ECC71
-          })
-        ]
-      });
+      return;
     } catch (err) {
       console.error('Modmail cevap hatası:', err);
       return message.reply({
